@@ -1,0 +1,534 @@
+import pygame
+import sys
+from pygame import *
+import pygame_menu
+
+animCount = 0   # счетчик анимаций
+score = 0 # счетчик очков
+
+carrotEX = []
+carrotEY = []
+
+walkLeft = [pygame.image.load('кролик лево 1 32.png'),
+            pygame.image.load('кролик лево 2 32.png'),
+            pygame.image.load('кролик лево 1 32.png'),
+            pygame.image.load('кролик лево 3 32.png')]
+walkRight = [pygame.image.load('кролик право 1 32.png'),
+            pygame.image.load('кролик право 2 32.png'),
+            pygame.image.load('кролик право 1 32.png'),
+            pygame.image.load('кролик право 3 32.png'),]
+
+# КОНСТАНТЫ
+# массив жизни
+heart = pygame.image.load('сердечко1.png')
+helth = 5
+
+
+# счетчик жизни
+def show_helth():
+    global helth
+    if helth >= 1:
+        show = 0
+        x1 = WIN_WIDTH-220
+        while show != helth:
+            window.blit (heart, (x1,20))
+            x1+=40
+            show+=1
+    else:
+        game_over()
+
+# игра окончена
+def game_over():
+    helth = 5
+    pygame.mixer.music.load('end.mp3')
+    pygame.mixer.music.set_volume(0.1)
+    pygame.mixer.music.play(-1)
+
+    surface2 = pygame.display.set_mode((500, 400))
+
+    menu2 = pygame_menu.Menu('Игра окнончена', 500, 400,
+                       theme=pygame_menu.themes.THEME_DARK)
+
+    menu2.add.button('Новая игра', main)
+    menu2.add.button('Выйти в главное меню', game_menu)
+    menu2.add.button('Выйти из игры', pygame_menu.events.EXIT)
+
+    menu2.mainloop(surface2)
+
+# для окна
+WIN_WIDTH = 800 # ширина создаваемого окна
+WIN_HEIGHT = 640 # высота
+WIN = (WIN_WIDTH, WIN_HEIGHT) # группируем ширину и высоту в одну переменную
+BACKGROUND = pygame.image.load('лес1.png')
+BACKGROUND1 = pygame.image.load('взрыв.jpg')
+BACKGROUND2 = pygame.image.load('вода.png')
+BACKGROUND_FAM = pygame.image.load('семья32.jpg')
+window = pygame.display.set_mode(WIN)
+COLOR = (255, 255, 255)
+
+# для платформ
+PLATFORM_WIDTH = 32
+PLATFORM_HEIGHT = 32
+PLATFORM_COLOR = "#FF6262"
+
+# для персонажа
+SPEED = 15   
+WIDTH = 60
+HEIGHT = 71
+JUMP_HEIGHT = 25    # высота прыжка
+GRAVITY = 2  # сила, тянущая вниз (гравитация)
+
+
+# КЛАСС ИГРОК
+class Player(sprite.Sprite):
+
+    def __init__(self, x, y):
+        sprite.Sprite.__init__(self)
+        self.xSpeed = 0 # скорость перемещения
+        self.xStart = x # начальная позиция х
+        self.yStart = y
+        
+        self.image = pygame.image.load('кролик право 1 32.png') # спрайт игрока
+        #self.rect = self.image.get_rect() # устанавливаем ссылку
+        self.rect = Rect(x, y, WIDTH, HEIGHT) # прямоугольный объект
+
+        self.ySpeed = 0 # скорость вертикального перемещения
+        self.onGround = False   # проверка на стояние на земле
+
+        self.animCount = 0
+      
+    # действия персонажа
+    def update(self, left, right, up, platforms,blockDies,water_arr,carrots,family,window,walkLeft,walkRight):
+        if self.animCount + 1 >= 40:
+            self.animCount = 0
+        window.blit(BACKGROUND,(0,0))
+
+        self.walkLeft=walkLeft
+        self.walkRight=walkRight
+
+        if up:
+            # если стоим на земле, то можем прыгать
+            if self.onGround:   
+                self.ySpeed = -JUMP_HEIGHT
+
+        if left:
+            self.xSpeed = -SPEED
+            #window.blit(self.walkLeft[self.animCount//10], (self.xSpeed, self.ySpeed))
+            self.image = self.walkLeft[self.animCount//10]
+            self.animCount+=5
+
+        elif right:
+            self.xSpeed = SPEED
+            #window.blit(self.walkRight[self.animCount//10], (self.xSpeed, self.ySpeed))
+            self.image = self.walkRight[self.animCount//10]
+            self.animCount+=5
+
+        if not(left or right):
+            self.xSpeed = 0
+            self.animCount = 0
+            #if not up:
+                #self.boltAnimStay.blit(self.image, (0, 0))
+
+        if not self.onGround:
+            self.ySpeed += GRAVITY
+            #if not up:
+             #  window.blit(BACKGROUND,(0,0))
+
+        self.onGround = False;
+
+        #проверка пересечения по х и у
+        self.rect.y += self.ySpeed
+        self.collide(0, self.ySpeed, platforms,blockDies,water_arr,carrots,family)
+        self.rect.x += self.xSpeed
+        self.collide(self.xSpeed, 0, platforms,blockDies,water_arr,carrots,family)
+    
+    # проверка на пересечения с платформами
+    def collide(self, xSpeed, ySpeed, platforms,blockDies,water_arr,carrots,family):
+        if xSpeed == 0 and ySpeed == 0:
+                return 0
+        
+        for i in range(len(platforms[0])):
+            p = Platform(platforms[0][i], platforms[1][i])
+            
+            if sprite.collide_rect(self, p): # если есть пересечение платформы с игроком
+
+                if xSpeed > 0:                      # если движется вправо
+                    self.rect.right = p.rect.left # то не движется вправо
+
+                if xSpeed < 0:                      # если движется влево
+                    self.rect.left = p.rect.right # то не движется влево
+
+                if ySpeed > 0:                      # если падает вниз
+                    self.rect.bottom = p.rect.top # то не падает вниз
+                    self.onGround = True          # и становится на что-то твердое
+                    self.ySpeed = 0                 # и энергия падения пропадает
+
+                if ySpeed < 0:                      # если движется вверх
+                    self.rect.top = p.rect.bottom # то не движется вверх
+                    self.ySpeed = 0                 # и энергия прыжка пропадает
+
+        # проверка на пересечение с бомбами
+        for i in range(len(blockDies[0])):
+            blockDie = Spike(blockDies[0][i],blockDies[1][i])
+            if sprite.collide_rect(self, blockDie):
+                window.blit(BACKGROUND1,(0,0))
+                pygame.display.update()
+                pygame.mixer.music.load('взрыв.mp3')
+                pygame.mixer.music.set_volume(0.1)
+                pygame.mixer.music.play(-1)
+                self.die()# умираем
+
+        # проверка на пересечение с водой
+        for i in range(len(water_arr[0])):
+            water = Water(water_arr[0][i],water_arr[1][i])
+            if sprite.collide_rect(self, water):
+                window.blit(BACKGROUND2,(0,0))
+                pygame.display.update()
+                pygame.mixer.music.load('всплеск.mp3')
+                pygame.mixer.music.set_volume(0.1)
+                pygame.mixer.music.play(-1)
+                self.die()# умираем
+
+         # проверка на морковь
+        for i in range(len(carrots[0])):
+            carrot = Carrot(carrots[0][i],carrots[1][i])
+            if sprite.collide_rect(self, carrot):
+                pygame.mixer.music.load('морковь.mp3')
+                pygame.mixer.music.set_volume(0.1)
+                pygame.mixer.music.play(-1)
+                global helth
+                global score
+                carrotEX.append(carrots[0][i])
+                carrotEY.append(carrots[1][i])
+                if helth < 5:
+                    helth +=1   # пополняем жизнь
+                time.wait(400)
+                pygame.mixer.music.load('музыка.mp3')
+                pygame.mixer.music.set_volume(0.1)
+                pygame.mixer.music.play(-1)
+
+        for i in range(len(family[0])):
+            fam = Family(family[0][i],family[1][i])
+            if sprite.collide_rect(self, fam):
+                window.blit(BACKGROUND_FAM,(0,0))
+                pygame.display.update()
+                pygame.mixer.music.load('радость.mp3')
+                pygame.mixer.music.set_volume(0.1)
+                pygame.mixer.music.play(-1)
+                time.wait(2000)
+                game_over()
+
+
+
+    def teleporting(self,goX,goY):
+        self.rect.x = goX
+        self.rect.y = goY
+    
+    def die(self):
+        global score
+        global helth
+        time.wait(1000)
+        self.teleporting(self.xStart,self.yStart)   #начинаем все сначала
+        pygame.mixer.music.load('музыка.mp3')
+        pygame.mixer.music.set_volume(0.1)
+        pygame.mixer.music.play(-1)
+        helth -=1
+
+
+
+class Platform(sprite.Sprite):
+    def __init__(self, x, y):
+        sprite.Sprite.__init__(self)
+        #self.image = Surface((PLATFORM_WIDTH, PLATFORM_HEIGHT))
+        self.image = image.load("камни32.png")
+        self.rect = Rect(x, y, PLATFORM_WIDTH, PLATFORM_HEIGHT)
+
+class Spike(Platform):
+    def __init__(self,x,y):
+        Platform.__init__(self,x,y)
+        self.image = image.load("bomb32.png")
+
+class Water(Platform):
+    def __init__(self,x,y):
+        Platform.__init__(self,x,y)
+        self.image = image.load("водичка32.png")
+
+class Family(Platform):
+    def __init__(self,x,y):
+        Platform.__init__(self,x,y)
+        self.image = image.load("семья.png")
+
+class Carrot(Platform):
+    def __init__(self,x,y):
+        Platform.__init__(self,x,y)
+        self.image = image.load("морковь.png")
+
+
+class Camera(object):
+    def __init__(self, camera_func, width, height):
+        self.camera_func = camera_func
+        self.state = Rect(0,0,width,height)
+
+    def apply(self,target):
+        return target.rect.move(self.state.topleft)
+
+    def update(self,target):
+        self.state = self.camera_func(self.state,target.rect)
+
+def camera_configure(camera, target_rect):
+        l, t, _, _ = target_rect
+        _, _, w, h = camera
+        l, t = -l+WIN_WIDTH / 2, -t+WIN_HEIGHT / 2
+
+        l = min(0, l)                           # Не движемся дальше левой границы
+        l = max(-(camera.width-WIN_WIDTH), l)   # Не движемся дальше правой границы
+        t = max(-(camera.height-WIN_HEIGHT), t) # Не движемся дальше нижней границы
+        t = min(0, t)                           # Не движемся дальше верхней границы
+
+        return Rect(l, t, w, h)    
+
+
+
+class Portal(Platform):
+    def __init__(self,x,y,goX,goY):
+        Platform.__init__(self, x, y)
+        self.goX = goX # координаты назначения перемещения
+        self.goY = goY # координаты назначения перемещения
+        boltAnim = []
+        for anim in ANIMATION_BLOCKTELEPORT:
+            boltAnim.append((anim, 0.3))
+        self.boltAnim = pyganim.PygAnimation(boltAnim)
+        self.boltAnim.play()
+        
+    def update(self):
+        self.image.fill(Color(PLATFORM_COLOR))
+        self.boltAnim.blit(self.image, (0, 0))
+
+# функции для меню
+def set_difficulty(value, difficulty):
+    # Do the job here !
+    pass
+
+def start_the_game():
+    # Do the job here !
+    pass
+
+# МЕНЮ
+def game_menu():
+    pygame.init()   # инициализируем библиотеку
+    pygame.mixer.music.load('музыка1.mp3')
+    pygame.mixer.music.set_volume(0.1)
+    pygame.mixer.music.play(-1)
+
+
+    surface = pygame.display.set_mode((500, 400))
+
+    menu = pygame_menu.Menu('Welcome', 500, 400,
+                       theme=pygame_menu.themes.THEME_GREEN)
+
+    menu.add.text_input('Введите имя:', default='')
+    #menu.add.selector('Difficulty :', [('Hard', 1), ('Easy', 2)], onchange=set_difficulty)
+    menu.add.button('Играть', main)
+    menu.add.button('Выйти из игры', pygame_menu.events.EXIT)
+
+    menu.mainloop(surface)
+
+    
+def pause():
+        
+            pygame.mixer.music.load('музыка1.mp3')
+            pygame.mixer.music.set_volume(0.1)
+            pygame.mixer.music.play(-1)
+            surface1 = pygame.display.set_mode((500, 400))
+            menu1 = pygame_menu.Menu('Welcome', 500, 400,
+                           theme=pygame_menu.themes.THEME_GREEN)
+            menu1.add.button('Новая игра', main)
+            menu1.add.button('Выйти в главное меню', game_menu)
+            menu1.add.button('Выйти из игры', pygame_menu.events.EXIT)
+            menu1.mainloop(surface1)
+
+
+# ОСНОВНАЯ ФУНКЦИЯ
+def main():
+    global level
+
+    window = pygame.display.set_mode(WIN)  # создаем окно
+    pygame.display.set_caption("Game")  # название игры
+    #BG = Surface((WIN_WIDTH,WIN_HEIGHT)) # создание видимой поверхности
+    
+    pygame.mixer.music.load('музыка.mp3')
+    pygame.mixer.music.set_volume(0.1)
+    pygame.mixer.music.play(-1)
+
+    hero = Player(50, 50) # создаем героя по (x,y) координатам
+    left = right = False    # по умолчанию стоим
+    up = False
+
+    objects = pygame.sprite.Group() # все объекты
+    platforms = [] # то, во что мы будем врезаться или опираться
+    objects.add(hero)
+
+    # создаем "уровни" игры (для платформ)
+    level = [
+       "-                                                                                                    ---",
+       "-                                                                                                    ---",
+       "-                                                                                                    ---",
+       "-                                                                                                    ---",
+       "-                                                                                                    ---",
+       "-                                                                                  *                 ---",
+       "-                                                                                 *      -          ----",
+       "-        *    --                                                                 ----            #  *  -",
+       "-                                                                                               ----*  -",
+       "--            --                                                                                *****  -",
+       "-                         **                                                             --            -",
+       "-                                --                                                             ---   --",
+       "-                                *                                           ----                      -",
+       "-        0                     ---                                                                     -",
+       "-      ---        *                                                                         -          -",
+       "-            0          --                                                                *--          -",
+       "-   -----------                    ***             - -               --                -------         -",
+       "-                                               - -      *   0       --       --                       -",
+       "-          *      -*--       **           -              -  -       ---                                -",
+       "-                   --                    -                        ----           ---                  -",
+       "-     ****          -                     -     --                -----                                -",
+       "-                   -          0          -    0 -               ------~~~~~~~~~~~~~~~~~0---           -",
+       "-----------------~~-------------------~~~~-~~~~~-~~~~~~~~~~~~~~~~~~~~--~~~~~~~~~~~~~~~~-----------------"]
+
+    # добавляем тайемр
+    timer = pygame.time.Clock()
+
+    total_level_width  = len(level[0])*PLATFORM_WIDTH # Высчитываем фактическую ширину уровня
+    total_level_height = len(level)*PLATFORM_HEIGHT   # высоту
+   
+    camera = Camera(camera_configure, total_level_width, total_level_height) 
+
+    # ОСНОВНОЙ ЦИКЛ
+    while 1:
+        timer.tick(15)
+
+        # проверка событий
+        for event in pygame.event.get():
+            # условие выхода
+            if event.type==pygame.QUIT:
+                sys.exit()
+            
+            # при нажатие определенной клавиши 
+            # право или лево переключается в положение True
+            if event.type == KEYDOWN and event.key == K_LEFT:
+                left = True
+                right = False
+            if event.type == KEYDOWN and event.key == K_RIGHT:
+                right = True
+                left = False
+            # при отпускании клавиши 
+            # право или лево переключается в положение False
+            if event.type == KEYUP and event.key == K_RIGHT:
+                right = False
+            if event.type == KEYUP and event.key == K_LEFT:
+                left = False
+
+            # проверка на прыжок
+            if event.type == KEYDOWN and event.key == K_UP:
+                up = True
+            if event.type == KEYUP and event.key == K_UP:
+                up = False
+
+            if event.type == KEYUP and event.key == K_ESCAPE:
+                pause()
+
+        window.blit(BACKGROUND,(0,0))      # перерисовываем все каждую итерацию
+        show_helth()
+
+        platformsx = []
+        platformsy = []
+        blockDieX = []
+        blockDieY = []
+        waterX = []
+        waterY = []
+        carrotX = []
+        carrotY = []
+        familyX = []
+        familyY = []
+        # задаем координаты
+        x=y=0
+        # идем по строкам level
+        for row in level:
+            # идем по столбцам
+            for column in row:
+                if column == "-":
+                    platformsx.append(x)
+                    platformsy.append(y)
+
+                if column == "*":
+                    blockDieX.append(x)
+                    blockDieY.append(y)
+
+                if column == "~":
+                    waterX.append(x)
+                    waterY.append(y)
+
+                if column == "#":
+                    familyX.append(x);
+                    familyY.append(y)
+
+                check = True
+                for i in range(len(carrotEX)):
+                    if (x == carrotEX[i] and y == carrotEY[i]):
+                        check = False
+                if check:
+                        if column == "0":
+                            carrotX.append(x)
+                            carrotY.append(y)
+
+                x += PLATFORM_WIDTH
+            y += PLATFORM_HEIGHT
+            x = 0   # в каждой строке начинаем с 0
+
+        platforms = []
+        platforms.append(platformsx)
+        platforms.append(platformsy)
+        blockDies = []
+        blockDies.append(blockDieX)
+        blockDies.append(blockDieY)
+        water_arr = []
+        water_arr.append(waterX)
+        water_arr.append(waterY)
+        carrots = []
+        carrots.append(carrotX)
+        carrots.append(carrotY)
+        family = []
+        family.append(familyX)
+        family.append(familyY)
+        
+        hero.update(left, right, up, platforms,blockDies,water_arr,carrots,family,window,walkLeft,walkRight) # вызов передвижения
+
+        camera.update(hero) # центризируем камеру относительно персонажа
+
+        for obj in objects:
+            window.blit(obj.image, camera.apply(obj))
+            
+        for i in range(len(platforms[0])):
+            p = Platform(platforms[0][i], platforms[1][i])
+            window.blit(p.image, camera.apply(p))
+
+        for i in range(len(blockDies[0])):
+            blockDie = Spike(blockDies[0][i],blockDies[1][i])
+            window.blit(blockDie.image, camera.apply(blockDie))
+
+        for i in range(len(water_arr[0])):
+            water = Water(water_arr[0][i],water_arr[1][i])
+            window.blit(water.image, camera.apply(water))
+
+        for i in range(len(carrots[0])):
+            carrot = Carrot(carrots[0][i],carrots[1][i])
+            window.blit(carrot.image, camera.apply(carrot))
+
+        for i in range(len(family[0])):
+            fam = Family(family[0][i],family[1][i])
+            window.blit(fam.image, camera.apply(fam))
+
+        show_helth()
+        pygame.display.update()     # обновление и вывод всех изменений на экран
+
+
+game_menu()
